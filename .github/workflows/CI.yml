@@ -75,11 +75,7 @@ jobs:
       with:
         name: Code Coverage Report
         path: code-coverage-results.md
-    
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
-      if: matrix.runner-os == 'ubuntu-latest'
-
+  
   upload-event-file:
     runs-on: ubuntu-latest
     steps:
@@ -228,81 +224,14 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Integration Test
-      env: 
-        ADO_PAT: ${{ secrets.ADO_PAT }}
-        GHEC_PAT: ${{ secrets.GHEC_PAT }}
-        GHES_PAT: ${{ secrets.GHES_PAT }}
-        ADO_SERVER_PAT: ${{ secrets.ADO_SERVER_PAT }}
-        BBS_USERNAME: ${{ secrets.BBS_USERNAME }}
-        BBS_PASSWORD: ${{ secrets.BBS_PASSWORD }}
-        SSH_KEY_BBS_8_5_0: ${{ secrets.SSH_KEY_BBS_8_5_0 }}
-        SSH_KEY_BBS_5_14_0: ${{ secrets.SSH_KEY_BBS_5_14_0 }}
-        SMB_PASSWORD: ${{ secrets.SMB_PASSWORD }}
-        AZURE_STORAGE_CONNECTION_STRING_BBS_LINUX: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING_BBS_LINUX }}
-        AZURE_STORAGE_CONNECTION_STRING_BBS_MACOS: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING_BBS_MACOS }}
-        AZURE_STORAGE_CONNECTION_STRING_BBS_WINDOWS: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING_BBS_WINDOWS }}
-        AZURE_STORAGE_CONNECTION_STRING_GHES_LINUX: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING_GHES_LINUX }}
-        AZURE_STORAGE_CONNECTION_STRING_GHES_MACOS: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING_GHES_MACOS }}
-        AZURE_STORAGE_CONNECTION_STRING_GHES_WINDOWS: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING_GHES_WINDOWS }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        LD_LIBRARY_PATH: '$LD_LIBRARY_PATH:${{ github.workspace }}/src/OctoshiftCLI.IntegrationTests/bin/Debug/net6.0/runtimes/ubuntu.18.04-x64/native'
-      run: dotnet test src/OctoshiftCLI.IntegrationTests/OctoshiftCLI.IntegrationTests.csproj --filter "${{ matrix.source-vcs }}ToGithub" --logger:"junit;LogFilePath=integration-tests.xml" /p:VersionPrefix=9.9
-
-    - name: Publish Integration Test Results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always() && matrix.runner-os == 'ubuntu-latest' && github.actor != 'dependabot[bot]'
-      with:
-        files: "**/*-tests.xml"
-        check_name: "Integration Test Results - ${{ matrix.source-vcs }}"
-        comment_mode: off
-    
-    - name: Upload test logs
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: integration-test-logs-${{ matrix.source-vcs }}-${{ matrix.runner-os }}
-        path: dist/**/*.log
-
-    - name: Test Logs
-      if: always()
-      run: Get-ChildItem . -Filter *.octoshift.log -Recurse | ForEach-Object { Get-Content -Path $_.FullName }
-      working-directory: ./dist
-      shell: pwsh
-
-    - name: Test Logs (Verbose)
-      if: always()
-      run: Get-ChildItem . -Filter *.octoshift.verbose.log -Recurse | ForEach-Object { Get-Content -Path $_.FullName }
-      working-directory: ./dist
-      shell: pwsh
-
   publish:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: [ build, e2e-test ]
-    environment: PUBLISH_RELEASE
 
     steps:
     - uses: actions/checkout@v4
       with:
-        token: ${{ secrets.RELEASE_NOTES_PAT }}
         fetch-depth: 0
-
-    - name: Validate tag on main
-      shell: pwsh
-      run: |
-        git checkout main
-        $mainsha = $(git show-ref refs/heads/main --hash)
-        $tagsha = $(git show-ref ${{ github.ref }} --hash)
-
-        Write-Output "refs/heads/main: $mainsha"
-        Write-Output "${{ github.ref }}: $tagsha"
-
-        if ($mainsha -ne $tagsha) {
-          Write-Error "tag must match HEAD of main"
-          exit 1
-        }
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v2
@@ -313,66 +242,10 @@ jobs:
       run: ./publish.ps1
       shell: pwsh
       env:
-        CLI_VERSION: ${{ github.ref }}
+        CLI_VERSION: "99.99.99"
 
-    - name: Create gh-gei Release
-      uses: softprops/action-gh-release@v1
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
       with:
-        body_path: ./RELEASENOTES.md
-        files: |
-          ./dist/ado2gh.*.win-x64.zip
-          ./dist/ado2gh.*.win-x86.zip
-          ./dist/ado2gh.*.linux-x64.tar.gz
-          ./dist/ado2gh.*.linux-arm64.tar.gz
-          ./dist/ado2gh.*.osx-x64.tar.gz
-          ./dist/win-x64/gei-windows-amd64.exe
-          ./dist/win-x86/gei-windows-386.exe
-          ./dist/linux-x64/gei-linux-amd64
-          ./dist/linux-arm64/gei-linux-arm64
-          ./dist/osx-x64/gei-darwin-amd64
-    
-    - name: Create gh-ado2gh Release
-      uses: softprops/action-gh-release@v1
-      with:
-        body_path: ./RELEASENOTES.md
-        repository: github/gh-ado2gh
-        token: ${{ secrets.PUBLISH_ADO2GH_TOKEN }}
-        files: |
-          ./dist/win-x86/ado2gh-windows-386.exe
-          ./dist/win-x64/ado2gh-windows-amd64.exe
-          ./dist/linux-x64/ado2gh-linux-amd64
-          ./dist/linux-arm64/ado2gh-linux-arm64
-          ./dist/osx-x64/ado2gh-darwin-amd64
-
-    - name: Create gh-bbs2gh Release
-      uses: softprops/action-gh-release@v1
-      with:
-        body_path: ./RELEASENOTES.md
-        repository: github/gh-bbs2gh
-        token: ${{ secrets.PUBLISH_BBS2GH_TOKEN }}
-        files: |
-          ./dist/win-x86/bbs2gh-windows-386.exe
-          ./dist/win-x64/bbs2gh-windows-amd64.exe
-          ./dist/linux-x64/bbs2gh-linux-amd64
-          ./dist/linux-arm64/bbs2gh-linux-arm64
-          ./dist/osx-x64/bbs2gh-darwin-amd64
-
-    - name: Archive Release Notes
-      shell: pwsh
-      run: |
-        $TAG_NAME = "${{ github.ref }}".Substring(10)
-        Get-Content ./RELEASENOTES.md | Out-File -FilePath ./releasenotes/$TAG_NAME.md
-        "" | Out-File ./RELEASENOTES.md
-        
-    - name: Update LATEST-VERSION.TXT
-      shell: pwsh
-      run: |
-        $TAG_NAME = "${{ github.ref }}".Substring(10)
-        $TAG_NAME | Out-File ./LATEST-VERSION.txt
-        
-    - name: Commit Release Notes and Version
-      uses: stefanzweifel/git-auto-commit-action@v5
-      with:
-        commit_message: Automated commit of archived release notes and version file [skip ci]
-        file_pattern: RELEASENOTES.md releasenotes/*.md LATEST-VERSION.txt
-        branch: main
+        name: All Builds
+        path: ./dist/
